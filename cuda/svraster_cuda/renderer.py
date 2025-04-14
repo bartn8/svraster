@@ -189,7 +189,7 @@ class _RasterizeVoxels(torch.autograd.Function):
             raster_settings.debug,
         )
 
-        num_rendered, binningBuffer, imgBuffer, out_color, out_depth, out_normal, out_T, max_w, out_feat = _C.rasterize_voxels(*args)
+        num_rendered, binningBuffer, imgBuffer, out_color, out_depth, out_ao, out_normal, out_T, max_w, out_feat = _C.rasterize_voxels(*args)
 
         # In case you want some advanced debuging here
         # ranges, tile_last, n_contrib = _C.unpack_ImageState(raster_settings.image_width, raster_settings.image_height, imgBuffer)
@@ -207,7 +207,7 @@ class _RasterizeVoxels(torch.autograd.Function):
             geos, rgbs,
             geomBuffer, binningBuffer, imgBuffer, out_T, out_depth, out_normal)
         ctx.mark_non_differentiable(max_w)
-        return out_color, out_depth, out_normal, out_T, max_w, out_feat
+        return out_color, out_depth, out_ao, out_normal, out_T, max_w, out_feat
 
     @staticmethod
     def backward(ctx, dL_dout_color, dL_dout_depth, dL_dout_normal, dL_dout_T, dL_dmax_w, dL_dout_feat):

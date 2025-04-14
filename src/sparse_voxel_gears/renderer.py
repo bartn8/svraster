@@ -140,7 +140,7 @@ class SVRenderer:
             need_normal=output_normal,
             track_max_w=track_max_w,
             **other_opt)
-        color, depth, normal, T, max_w, feat = svraster_cuda.renderer.rasterize_voxels(
+        color, depth, ao, normal, T, max_w, feat = svraster_cuda.renderer.rasterize_voxels(
             raster_settings,
             self.octpath,
             self.vox_center,
@@ -160,6 +160,7 @@ class SVRenderer:
 
         render_pkg = {
             'color': color,
+            'ao': ao,
             'depth': depth if output_depth else None,
             'normal': normal if output_normal else None,
             'T': T if output_T else None,
@@ -167,7 +168,7 @@ class SVRenderer:
             'feat': feat if feat.numel() > 0 else None,
         }
 
-        for k in ['color', 'depth', 'normal', 'T', 'feat']:
+        for k in ['color', 'ao', 'depth', 'normal', 'T', 'feat']:
             render_pkg[f'raw_{k}'] = render_pkg[k]
 
             # Post process super-sampling

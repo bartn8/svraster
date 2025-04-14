@@ -60,6 +60,7 @@ renderCUDA(
 
     float* __restrict__ out_color,
     float* __restrict__ out_depth,
+    float* __restrict__ out_ao,
     float* __restrict__ out_normal,
     float* __restrict__ out_T,
     float* __restrict__ max_w,
@@ -68,6 +69,8 @@ renderCUDA(
     const float* __restrict__ feats,
     float* __restrict__ out_feat)
 {
+    const bool need_ao = true; //too much complexity to add this as a parameter (rebuild the macro)
+
     // Identify current tile and associated min/max pixel range.
     auto block = cg::this_thread_block();
     uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
@@ -170,6 +173,7 @@ renderCUDA(
     int j_lst[BLOCK_SIZE];
 
     float feat[MAX_FEAT_DIM] = {0.f};
+    float ao = 0.f;
 
     // Iterate over batches until all done or range is complete.
     for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
@@ -281,6 +285,11 @@ renderCUDA(
             {
                 for (int k=0; k<feat_dim; ++k)
                     feat[k] += pt_w * feats[vox_id*feat_dim + k];
+            }
+
+            // Ambient occlusion
+            if (need_ao){
+               ao = ao + pt_w;
             }
 
             if (need_depth)
@@ -408,11 +417,17 @@ renderCUDA(
         }
         if (need_depth)
         {
+            //Channel 0: mean depth
             out_depth[pix_id] = D * rd_norm_inv;
+            //Channel 2: median depth
             out_depth[H * W * 2 + pix_id] = D_med * rd_norm_inv;
+        }
+        if (need_ao){
+            out_ao[0 * H * W + pix_id] = ao;
         }
         if (need_distortion)
         {
+            //Channel 1: distortion loss cache
             out_depth[H * W + pix_id] = Ddist;
         }
         if (need_normal)
@@ -525,6 +540,7 @@ void render(
 
     float* out_color,
     float* out_depth,
+    float* out_ao,
     float* out_normal,
     float* out_T,
     float* max_w,
@@ -565,6 +581,7 @@ void render(
 
         out_color,
         out_depth,
+        out_ao,
         out_normal,
         out_T,
         max_w,
@@ -703,6 +720,7 @@ int rasterize_voxels_procedure(
 
     float* out_color,
     float* out_depth,
+    float* out_ao,
     float* out_normal,
     float* out_T,
     float* max_w,
@@ -812,6 +830,7 @@ int rasterize_voxels_procedure(
 
         out_color,
         out_depth,
+        out_ao,
         out_normal,
         out_T,
         max_w,
@@ -826,7 +845,7 @@ int rasterize_voxels_procedure(
 
 
 // Interface for python to run forward rasterization.
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 rasterize_voxels(
     const int vox_geo_mode,
     const int density_mode,
@@ -872,6 +891,7 @@ rasterize_voxels(
 
     torch::Tensor out_color = torch::full({3, H, W}, 0.f, float_opts);
     torch::Tensor out_depth = need_depth || need_distortion ? torch::full({3, H, W}, 0.f, float_opts) : torch::empty({0});
+    torch::Tensor out_ao = torch::full({1, H, W}, 0.f, float_opts);
     torch::Tensor out_normal = need_normal ? torch::full({3, H, W}, 0.f, float_opts) : torch::empty({0});
     torch::Tensor out_T = torch::full({1, H, W}, 0.f, float_opts);
     torch::Tensor max_w = track_max_w ? torch::full({P, 1}, 0.f, float_opts) : torch::empty({0});
@@ -919,6 +939,7 @@ rasterize_voxels(
 
             out_color.contiguous().data_ptr<float>(),
             out_depth.contiguous().data_ptr<float>(),
+            out_ao.contiguous().data_ptr<float>(),
             out_normal.contiguous().data_ptr<float>(),
             out_T.contiguous().data_ptr<float>(),
             max_w_pointer,
@@ -929,7 +950,7 @@ rasterize_voxels(
 
             debug);
 
-    return std::make_tuple(rendered, binningBuffer, imgBuffer, out_color, out_depth, out_normal, out_T, max_w, out_feat);
+    return std::make_tuple(rendered, binningBuffer, imgBuffer, out_color, out_depth, out_ao, out_normal, out_T, max_w, out_feat);
 }
 
 }
